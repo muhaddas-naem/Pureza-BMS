@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 80" width="320" height="80">
+  <!-- Left Leaf / "P" Emblem -->
+  <g transform="translate(10, 5)">
+    <!-- Main Leaf Body -->
+    <path d="M 32 68 C 15 68 5 50 5 32 C 5 12 22 2 40 2 C 55 2 65 15 65 30 C 65 48 50 68 32 68 Z" fill="#22c55e" />
+    <path d="M 32 68 C 20 68 8 52 8 32 C 8 16 22 5 38 5 C 48 5 58 14 60 26 C 45 28 35 38 32 68 Z" fill="#16a34a" />
+    <!-- Leaf Stem / Vein lines -->
+    <path d="M 12 68 C 22 50 30 35 48 10" stroke="#052e16" stroke-width="3" stroke-linecap="round" fill="none" />
+    <path d="M 28 42 L 40 32" stroke="#052e16" stroke-width="2.5" stroke-linecap="round" fill="none" />
+    <path d="M 35 30 L 48 20" stroke="#052e16" stroke-width="2.5" stroke-linecap="round" fill="none" />
+    <path d="M 24 50 L 32 45" stroke="#052e16" stroke-width="2.5" stroke-linecap="round" fill="none" />
+  </g>
+
+  <!-- Typography "Pureza" -->
+  <text x="85" y="52" font-family="'Anek Bangla', 'Segoe UI', sans-serif" font-weight="800" font-size="44" fill="#032813" letter-spacing="-0.5">Pureza</text>
+
+  <!-- Leaf Accent above 'a' -->
+  <path d="M 270 14 C 280 8 290 10 292 18 C 292 26 280 28 272 26 C 268 22 268 16 270 14 Z" fill="#22c55e" />
+</svg>

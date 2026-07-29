@@ -1,0 +1,6 @@
+{
+  "name": "Pureza Business Management System (PBMS)",
+  "description": "Pureza-এর দৈনন্দিন ব্যবসা পরিচালনার জন্য সম্পূর্ণ বাংলা বিজনেস ম্যানেজমেন্ট সিস্টেম।",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

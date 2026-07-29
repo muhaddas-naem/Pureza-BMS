@@ -1,0 +1,67 @@
+@import "tailwindcss";
+
+@layer base {
+  * {
+    font-family: 'Anek Bangla', 'Hind Siliguri', 'Noto Sans Bengali', system-ui, -apple-system, sans-serif;
+  }
+
+  body {
+    font-family: 'Anek Bangla', 'Hind Siliguri', 'Noto Sans Bengali', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  input, button, select, textarea, table, th, td {
+    font-family: 'Anek Bangla', 'Hind Siliguri', 'Noto Sans Bengali', system-ui, -apple-system, sans-serif;
+  }
+}
+
+.font-num {
+  font-family: 'Anek Bangla', system-ui, -apple-system, sans-serif;
+}
+
+.font-signature {
+  font-family: 'Dancing Script', cursive, sans-serif;
+}
+
+/* Custom scrollbar for clean UI */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.4);
+  border-radius: 9999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: rgba(107, 114, 128, 0.6);
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+  }
+  body * {
+    visibility: hidden;
+  }
+  #printable-invoice, #printable-invoice * {
+    visibility: visible;
+  }
+  #printable-invoice {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 20px !important;
+    background: white !important;
+    color: black !important;
+    box-shadow: none !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+}
