@@ -83,7 +83,7 @@ export const LoginScreen: React.FC = () => {
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 required
-                placeholder="01818585331"
+                placeholder="যেমন: 01818585331"
                 className="w-full pl-10 pr-4 py-3 bg-slate-800/80 border border-slate-700 rounded-2xl text-white text-sm placeholder-slate-500 focus:outline-hidden focus:border-teal-500 focus:ring-2 focus:ring-teal-500/20 transition-all"
               />
             </div>

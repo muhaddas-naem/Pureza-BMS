@@ -72,6 +72,7 @@ export interface Product {
   categoryId: string;
   categoryName?: string;
   name: string;
+  slug?: string; // English Search Keyword / Alias / Slug for quick order search
   sku: string;
   barcode?: string;
   buyingPrice: number;
@@ -114,8 +115,10 @@ export interface Order {
   date: string;
   items: OrderItem[];
   subtotal: number;
+  subTotal?: number;
   discount: number;
   deliveryCharge: number;
+  advancePaid?: number;
   grandTotal: number;
   paymentMethod: PaymentMethod;
   paymentStatus: PaymentStatus;
@@ -187,6 +190,7 @@ export interface SystemSettings {
   logoUrl?: string;
   phone: string;
   email: string;
+  website?: string;
   address: string;
   orderPrefix: string;
   invoicePrefix: string;
@@ -194,6 +198,10 @@ export interface SystemSettings {
   deliveryChargeOutsideDhaka: number;
   paymentMethods: string[];
   couriers: string[];
+  defaultCourier?: CourierName;
+  lowStockThreshold?: number;
+  currencySymbol?: string;
+  invoiceFooterNote?: string;
   darkMode: boolean;
 }
 

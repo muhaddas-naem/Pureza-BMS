@@ -34,12 +34,13 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
 
   const filteredProducts = products.filter((p) => {
     if (!searchQuery.trim()) return true;
-    const q = searchQuery.toLowerCase();
+    const q = searchQuery.toLowerCase().trim();
     const matchName = p.name.toLowerCase().includes(q);
-    const matchSku = p.sku.toLowerCase().includes(q);
+    const matchSku = p.sku?.toLowerCase().includes(q);
+    const matchSlug = p.slug?.toLowerCase().includes(q);
     const matchCategory = p.categoryName?.toLowerCase().includes(q);
-    const matchPrice = p.sellingPrice.toString().includes(q);
-    return matchName || matchSku || matchCategory || matchPrice;
+    const matchPrice = p.sellingPrice?.toString().includes(q);
+    return matchName || matchSku || matchSlug || matchCategory || matchPrice;
   });
 
   const handleSelect = (productId: string) => {
@@ -85,7 +86,7 @@ export const ProductSearchSelect: React.FC<ProductSearchSelectProps> = ({
               autoFocus
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="পণ্যের নাম, SKU, বা ক্যাটাগরি লিখুন..."
+              placeholder="পণ্যের নাম, SKU, বা সার্চ কি-ওয়ার্ড/স্লাগ লিখুন..."
               className="w-full pl-8 pr-7 py-2 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-teal-500 text-xs font-medium"
             />
             {searchQuery && (

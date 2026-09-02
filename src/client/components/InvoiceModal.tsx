@@ -11,7 +11,7 @@ interface InvoiceModalProps {
 }
 
 export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order: propOrder, onClose: propOnClose }) => {
-  const { selectedInvoiceOrder, closeInvoiceModal, settings } = useApp();
+  const { selectedInvoiceOrder, closeInvoiceModal, settings, products } = useApp();
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isGeneratingPng, setIsGeneratingPng] = useState(false);
   const [isGeneratingJpg, setIsGeneratingJpg] = useState(false);
@@ -583,42 +583,49 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order: propOrder, on
                     </tr>
                   </thead>
                   <tbody style={{ fontSize: '11px' }}>
-                    {order.items.map((item, idx) => (
-                      <tr
-                        key={item.id || idx}
-                        style={{
-                          borderBottom: '1px solid #e2e8f0',
-                          height: '38px',
-                          pageBreakInside: 'avoid',
-                          breakInside: 'avoid',
-                        }}
-                      >
-                        <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b', fontWeight: '500' }}>
-                          {idx + 1}
-                        </td>
-                        <td
+                    {(order.items || []).map((item, idx) => {
+                      const matchedProduct = products?.find((p) => p.id === item.productId);
+                      const displayName = matchedProduct ? matchedProduct.name : item.productName;
+                      const qty = Number(item.quantity) || 1;
+                      const unit = Number(item.unitPrice) || 0;
+                      const total = Number(item.totalPrice) || qty * unit;
+                      return (
+                        <tr
+                          key={item.id || idx}
                           style={{
-                            padding: '8px 10px',
-                            fontWeight: '700',
-                            color: '#0f172a',
-                            wordBreak: 'break-word',
-                            overflowWrap: 'anywhere',
-                            lineHeight: '1.3',
+                            borderBottom: '1px solid #e2e8f0',
+                            height: '38px',
+                            pageBreakInside: 'avoid',
+                            breakInside: 'avoid',
                           }}
                         >
-                          {item.productName}
-                        </td>
-                        <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '700', color: '#334155' }}>
-                          {item.quantity}
-                        </td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>
-                          ৳{item.unitPrice.toLocaleString('bn-BD')}
-                        </td>
-                        <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '800', color: '#0f172a' }}>
-                          ৳{item.totalPrice.toLocaleString('bn-BD')}
-                        </td>
-                      </tr>
-                    ))}
+                          <td style={{ padding: '8px 10px', textAlign: 'center', color: '#64748b', fontWeight: '500' }}>
+                            {idx + 1}
+                          </td>
+                          <td
+                            style={{
+                              padding: '8px 10px',
+                              fontWeight: '700',
+                              color: '#0f172a',
+                              wordBreak: 'break-word',
+                              overflowWrap: 'anywhere',
+                              lineHeight: '1.3',
+                            }}
+                          >
+                            {displayName}
+                          </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'center', fontWeight: '700', color: '#334155' }}>
+                            {qty}
+                          </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', color: '#475569' }}>
+                            ৳{unit.toLocaleString('bn-BD')}
+                          </td>
+                          <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: '800', color: '#0f172a' }}>
+                            ৳{total.toLocaleString('bn-BD')}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -646,13 +653,19 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order: propOrder, on
                             backgroundColor: '#f8fafc',
                             borderRadius: '8px',
                             border: '1px solid #e2e8f0',
-                            fontStyle: 'italic',
                             lineHeight: '1.4',
                             color: '#334155',
                             wordBreak: 'break-word',
                           }}
                         >
-                          {order.notes || 'কোনো অতিরিক্ত নির্দেশনা নেই। ধন্যবাদ।'}
+                          {order.notes && (
+                            <p style={{ margin: '0 0 6px 0', fontStyle: 'italic' }}>
+                              <strong style={{ fontStyle: 'normal' }}>অর্ডার নোট:</strong> {order.notes}
+                            </p>
+                          )}
+                          <p style={{ margin: 0, fontWeight: '700', color: '#0f766e' }}>
+                            📌 {settings.invoiceFooterNote || 'ধন্যবাদ Pureza-র সাথে থাকার জন্য।'}
+                          </p>
                         </div>
                       </td>
 
@@ -663,19 +676,19 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order: propOrder, on
                             <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td style={{ padding: '4px 0', color: '#64748b' }}>সাবটোটাল:</td>
                               <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '700', color: '#0f172a' }}>
-                                ৳{order.subtotal.toLocaleString('bn-BD')}
+                                ৳{(Number(order.subtotal) || 0).toLocaleString('bn-BD')}
                               </td>
                             </tr>
                             <tr style={{ borderBottom: '1px solid #f1f5f9', color: '#e11d48' }}>
                               <td style={{ padding: '4px 0' }}>ডিসকাউন্ট (ছাড়):</td>
                               <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '700' }}>
-                                - ৳{order.discount.toLocaleString('bn-BD')}
+                                - ৳{(Number(order.discount) || 0).toLocaleString('bn-BD')}
                               </td>
                             </tr>
                             <tr style={{ borderBottom: '1px solid #f1f5f9' }}>
                               <td style={{ padding: '4px 0', color: '#64748b' }}>ডেলিভারি চার্জ:</td>
                               <td style={{ padding: '4px 0', textAlign: 'right', fontWeight: '700', color: '#0f172a' }}>
-                                ৳{order.deliveryCharge.toLocaleString('bn-BD')}
+                                ৳{(Number(order.deliveryCharge) || 0).toLocaleString('bn-BD')}
                               </td>
                             </tr>
                             <tr>
@@ -700,7 +713,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order: propOrder, on
                                   color: '#0f172a',
                                 }}
                               >
-                                ৳{order.grandTotal.toLocaleString('bn-BD')}
+                                ৳{(Number(order.grandTotal) || 0).toLocaleString('bn-BD')}
                               </td>
                             </tr>
                           </tbody>
@@ -730,11 +743,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order: propOrder, on
                   <tr>
                     {/* Left Notice / Official Statement */}
                     <td style={{ verticalAlign: 'bottom' }}>
-                      <p style={{ fontSize: '10px', fontWeight: '700', color: '#475569', margin: 0 }}>
-                        {companyName} Auto-Generated Official Invoice
+                      <p style={{ fontSize: '10px', fontWeight: '700', color: '#0f766e', margin: 0 }}>
+                        {settings.invoiceFooterNote || `${companyName} Auto-Generated Official Invoice`}
                       </p>
                       <p style={{ fontSize: '9px', color: '#94a3b8', margin: '2px 0 0 0' }}>
-                        অর্ডার রেফারেন্স: {order.orderNumber}
+                        অর্ডার রেফারেন্স: {order.orderNumber} | {companyName}
                       </p>
                     </td>
 

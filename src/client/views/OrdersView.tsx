@@ -19,11 +19,14 @@ import {
   Truck,
   CreditCard,
   FileText,
+  Check,
+  Package,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import { CourierName, Order, OrderItem, OrderStatus, PaymentMethod, PaymentStatus } from '../types';
 import { bdDistricts } from '../data/mockData';
 import { DistrictSearchSelect } from '../components/DistrictSearchSelect';
+import { ThanaSearchSelect } from '../components/ThanaSearchSelect';
 import { ProductSearchSelect } from '../components/ProductSearchSelect';
 
 export const OrdersView: React.FC = () => {
@@ -33,6 +36,7 @@ export const OrdersView: React.FC = () => {
     updateOrderStatus,
     updateOrder,
     deleteOrder,
+    deleteOrders,
     duplicateOrder,
     openInvoiceModal,
     setActiveTab,
@@ -44,8 +48,64 @@ export const OrdersView: React.FC = () => {
   const [courierFilter, setCourierFilter] = useState<string>('All');
   const [selectedOrders, setSelectedOrders] = useState<string[]>([]);
   const [selectedOrderDetails, setSelectedOrderDetails] = useState<Order | null>(null);
+  const [copiedCourierInfo, setCopiedCourierInfo] = useState(false);
+  const [copiedPackingInfo, setCopiedPackingInfo] = useState(false);
+  const [copiedToast, setCopiedToast] = useState('');
   const [deletingOrder, setDeletingOrder] = useState<Order | null>(null);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
+  const triggerToast = (msg: string) => {
+    setCopiedToast(msg);
+    setTimeout(() => {
+      setCopiedToast((prev) => (prev === msg ? '' : prev));
+    }, 2500);
+  };
+
+  const copyDirectText = (text: string, label: string) => {
+    if (!text || text.trim() === '') return;
+    navigator.clipboard.writeText(text).then(() => {
+      triggerToast(`${label} কপি হয়েছে!`);
+    });
+  };
+
+  const copyCourierBookingInfo = (order: Order) => {
+    const itemsSummary = (order.items || [])
+      .map((i) => `${i.productName} * ${i.quantity}`)
+      .join(', ');
+
+    const text = `নাম: ${order.customerName}
+ফোন: ${order.customerPhone}${order.customerAltPhone ? ` / ${order.customerAltPhone}` : ''}
+জেলা: ${order.district}
+থানা: ${order.area || '-'}
+ঠিকানা: ${order.address}
+পণ্য: ${itemsSummary}
+COD: ৳${order.grandTotal}`;
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedCourierInfo(true);
+      triggerToast('কুরিয়ার বুকিং টেক্সট কপি হয়েছে!');
+      setTimeout(() => setCopiedCourierInfo(false), 2500);
+    });
+  };
+
+  const copyPackingInfo = (order: Order) => {
+    const bookingCode =
+      order.trackingNumber && order.trackingNumber.trim() !== ''
+        ? order.trackingNumber.trim()
+        : `#${order.orderNumber}`;
+
+    const itemsText = (order.items || [])
+      .map((i) => `${i.productName} * ${i.quantity}`)
+      .join('\n');
+
+    const text = `${bookingCode}\n\n${itemsText}`;
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedPackingInfo(true);
+      triggerToast('প্যাকিং টেক্সট (CN + পণ্য তালিকা) কপি হয়েছে!');
+      setTimeout(() => setCopiedPackingInfo(false), 2500);
+    });
+  };
 
   // Edit Order Modal State
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
@@ -138,33 +198,46 @@ export const OrdersView: React.FC = () => {
   // Open Edit Order Modal
   const openEditOrderModal = (order: Order) => {
     setEditingOrder(order);
-    setEditCustomerName(order.customerName);
-    setEditCustomerPhone(order.customerPhone);
+    setEditCustomerName(order.customerName || '');
+    setEditCustomerPhone(order.customerPhone || '');
     setEditCustomerAltPhone(order.customerAltPhone || '');
-    setEditDistrict(order.district);
+    setEditDistrict(order.district || '');
     setEditArea(order.area || '');
-    setEditAddress(order.address);
-    setEditCourier(order.courier);
+    setEditAddress(order.address || '');
+    setEditCourier(order.courier || 'Pathao');
     setEditTrackingNumber(order.trackingNumber || '');
-    setEditPaymentStatus(order.paymentStatus);
-    setEditPaymentMethod(order.paymentMethod);
-    setEditOrderStatus(order.orderStatus);
-    setEditDiscount(order.discount || 0);
-    setEditDeliveryCharge(order.deliveryCharge || 80);
+    setEditPaymentStatus(order.paymentStatus || 'Pending');
+    setEditPaymentMethod(order.paymentMethod || 'COD');
+    setEditOrderStatus(order.orderStatus || 'New');
+    setEditDiscount(Number(order.discount) || 0);
+    setEditDeliveryCharge(Number(order.deliveryCharge) || 80);
     setEditNotes(order.notes || '');
-    setEditItems([...order.items]);
+    setEditItems(
+      (order.items || []).map((it) => {
+        const qty = Number(it.quantity) || 1;
+        const unit = Number(it.unitPrice) || 0;
+        const total = Number(it.totalPrice) || qty * unit;
+        return {
+          ...it,
+          quantity: qty,
+          unitPrice: unit,
+          buyingPrice: Number(it.buyingPrice) || 0,
+          totalPrice: total,
+        };
+      })
+    );
   };
 
   // Edit Item Helper Functions
   const handleItemQtyChange = (index: number, newQty: number) => {
-    const qty = Math.max(0.5, newQty);
+    const qty = Math.max(0.01, Math.round(newQty * 100) / 100);
     setEditItems((prev) =>
       prev.map((item, i) =>
         i === index
           ? {
               ...item,
               quantity: qty,
-              totalPrice: qty * item.unitPrice,
+              totalPrice: Math.round(qty * (Number(item.unitPrice) || 0)),
             }
           : item
       )
@@ -179,7 +252,7 @@ export const OrdersView: React.FC = () => {
           ? {
               ...item,
               unitPrice: price,
-              totalPrice: item.quantity * price,
+              totalPrice: Math.round((Number(item.quantity) || 1) * price),
             }
           : item
       )
@@ -198,6 +271,9 @@ export const OrdersView: React.FC = () => {
     const prod = products.find((p) => p.id === productId);
     if (!prod) return;
 
+    const unitPrice = Number(prod.sellingPrice) || 0;
+    const buyingPrice = Number(prod.buyingPrice) || 0;
+
     // Check if item already exists
     const existingIndex = editItems.findIndex((it) => it.productId === prod.id);
     if (existingIndex >= 0) {
@@ -208,9 +284,9 @@ export const OrdersView: React.FC = () => {
         productId: prod.id,
         productName: prod.name,
         quantity: 1,
-        unitPrice: prod.salePrice,
-        buyingPrice: prod.buyPrice || 0,
-        totalPrice: prod.salePrice,
+        unitPrice: unitPrice,
+        buyingPrice: buyingPrice,
+        totalPrice: unitPrice,
       };
       setEditItems((prev) => [...prev, newItem]);
     }
@@ -221,7 +297,7 @@ export const OrdersView: React.FC = () => {
     e.preventDefault();
     if (!editingOrder) return;
 
-    const subtotal = editItems.reduce((sum, item) => sum + item.totalPrice, 0);
+    const subtotal = editItems.reduce((sum, item) => sum + (Number(item.totalPrice) || ((Number(item.unitPrice) || 0) * Number(item.quantity))), 0);
     const grandTotal = Math.max(0, subtotal - editDiscount + editDeliveryCharge);
 
     const updatedOrder: Order = {
@@ -273,7 +349,17 @@ export const OrdersView: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 pb-12">
+    <div className="space-y-6 pb-12 relative">
+      {/* Copied Toast Feedback - Floats on top of all modals (z-[99999]) */}
+      {copiedToast && (
+        <div className="fixed top-6 right-6 z-[99999] bg-slate-900/95 text-white dark:bg-white dark:text-slate-900 px-5 py-3 rounded-2xl shadow-2xl font-bold text-xs flex items-center gap-2.5 border border-teal-500/50 backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-200">
+          <div className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 dark:text-emerald-600 flex items-center justify-center">
+            <Check className="w-3.5 h-3.5 stroke-[3]" />
+          </div>
+          <span>{copiedToast}</span>
+        </div>
+      )}
+
       {/* Top Header Controls */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-slate-900 p-6 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs">
         <div>
@@ -449,7 +535,9 @@ export const OrdersView: React.FC = () => {
                     </td>
 
                     <td className="py-3 px-4 font-medium text-slate-700 dark:text-slate-300">
-                      {order.items.reduce((s, i) => s + i.quantity, 0)} টি পণ্য
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200">
+                        {order.items?.length || 0} টি আইটেম
+                      </span>
                     </td>
 
                     <td className="py-3 px-4 font-black text-slate-900 dark:text-white">
@@ -651,12 +739,12 @@ export const OrdersView: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block font-semibold mb-1">থানা / এরিয়া</label>
-                    <input
-                      type="text"
+                    <label className="block font-semibold mb-1">থানা / উপজেলা (Area)</label>
+                    <ThanaSearchSelect
                       value={editArea}
-                      onChange={(e) => setEditArea(e.target.value)}
-                      className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900"
+                      onChange={(a) => setEditArea(a)}
+                      district={editDistrict}
+                      placeholder="থানা লিখুন বা সিলেক্ট করুন..."
                     />
                   </div>
 
@@ -802,44 +890,79 @@ export const OrdersView: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {editItems.map((item, idx) => (
-                        <tr key={item.id || idx}>
-                          <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">
-                            {item.productName}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <input
-                              type="number"
-                              step="0.5"
-                              min="0.5"
-                              value={item.quantity}
-                              onChange={(e) => handleItemQtyChange(idx, parseFloat(e.target.value) || 0.5)}
-                              className="w-20 p-1.5 text-center rounded-lg border border-slate-300 dark:border-slate-700 font-bold"
-                            />
-                          </td>
-                          <td className="p-2.5 text-right">
-                            <input
-                              type="number"
-                              min="0"
-                              value={item.unitPrice}
-                              onChange={(e) => handleItemUnitPriceChange(idx, parseFloat(e.target.value) || 0)}
-                              className="w-24 p-1.5 text-right rounded-lg border border-slate-300 dark:border-slate-700 font-semibold"
-                            />
-                          </td>
-                          <td className="p-2.5 text-right font-black text-slate-900 dark:text-white">
-                            ৳{item.totalPrice.toLocaleString('bn-BD')}
-                          </td>
-                          <td className="p-2.5 text-center">
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveItem(idx)}
-                              className="p-1 text-rose-500 hover:bg-rose-100 rounded cursor-pointer"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))}
+                      {editItems.map((item, idx) => {
+                        const currentProduct = products.find((p) => p.id === item.productId);
+                        const displayName = currentProduct ? currentProduct.name : item.productName;
+                        return (
+                          <tr key={item.id || idx}>
+                            <td className="p-2.5 font-bold text-slate-800 dark:text-slate-200">
+                              <div>{displayName}</div>
+                              {currentProduct?.sku && (
+                                <div className="text-[10px] text-slate-400 font-mono">SKU: {currentProduct.sku}</div>
+                              )}
+                            </td>
+                            <td className="p-2.5 text-center">
+                              <div className="flex flex-col items-center gap-1">
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  min="0.01"
+                                  value={item.quantity}
+                                  onChange={(e) => handleItemQtyChange(idx, parseFloat(e.target.value) || 0.25)}
+                                  className="w-20 p-1.5 text-center rounded-lg border border-slate-300 dark:border-slate-700 font-bold text-xs"
+                                />
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemQtyChange(idx, 0.25)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-teal-50 text-[10px] font-bold text-teal-700 dark:text-teal-400"
+                                    title="250 গ্রাম"
+                                  >
+                                    250g
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemQtyChange(idx, 0.5)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-teal-50 text-[10px] font-bold text-teal-700 dark:text-teal-400"
+                                    title="500 গ্রাম"
+                                  >
+                                    0.5
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleItemQtyChange(idx, 1)}
+                                    className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 hover:bg-teal-50 text-[10px] font-bold text-teal-700 dark:text-teal-400"
+                                    title="1 কেজি"
+                                  >
+                                    1
+                                  </button>
+                                </div>
+                              </div>
+                            </td>
+                            <td className="p-2.5 text-right">
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.unitPrice}
+                                onChange={(e) => handleItemUnitPriceChange(idx, parseFloat(e.target.value) || 0)}
+                                className="w-24 p-1.5 text-right rounded-lg border border-slate-300 dark:border-slate-700 font-semibold text-xs"
+                              />
+                            </td>
+                            <td className="p-2.5 text-right font-black text-slate-900 dark:text-white">
+                              ৳{(Number(item.totalPrice) || ((Number(item.unitPrice) || 0) * (Number(item.quantity) || 1)) || 0).toLocaleString('bn-BD')}
+                            </td>
+                            <td className="p-2.5 text-center">
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveItem(idx)}
+                                className="p-1 text-rose-500 hover:bg-rose-100 rounded cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -875,10 +998,18 @@ export const OrdersView: React.FC = () => {
                   </span>
                   <span className="text-xl font-black text-teal-800 dark:text-teal-200">
                     ৳
-                    {(
-                      editItems.reduce((sum, item) => sum + item.totalPrice, 0) -
-                      editDiscount +
-                      editDeliveryCharge
+                    {Math.max(
+                      0,
+                      editItems.reduce(
+                        (sum, item) =>
+                          sum +
+                          (Number(item.totalPrice) ||
+                            (Number(item.unitPrice) || 0) * (Number(item.quantity) || 1) ||
+                            0),
+                        0
+                      ) -
+                        editDiscount +
+                        editDeliveryCharge
                     ).toLocaleString('bn-BD')}
                   </span>
                 </div>
@@ -923,31 +1054,222 @@ export const OrdersView: React.FC = () => {
               </button>
             </div>
 
-            {/* Customer Details */}
-            <div className="p-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl space-y-1 text-xs">
-              <p className="font-bold text-sm text-slate-900 dark:text-white">
-                গ্রাহক: {selectedOrderDetails.customerName} ({selectedOrderDetails.customerPhone})
-              </p>
-              <p className="text-slate-600 dark:text-slate-400">
-                ঠিকানা: {selectedOrderDetails.address}, {selectedOrderDetails.area}, {selectedOrderDetails.district}
-              </p>
-              <p className="text-slate-600 dark:text-slate-400">
-                কুরিয়ার: <span className="font-bold text-teal-600">{selectedOrderDetails.courier}</span> | পেমেন্ট: {selectedOrderDetails.paymentMethod} ({selectedOrderDetails.paymentStatus})
-              </p>
+            {/* Customer & Courier Booking Card */}
+            <div className="p-4 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 space-y-3 text-xs">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1.5 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span
+                      onClick={() => copyDirectText(selectedOrderDetails.customerName, 'গ্রাহকের নাম')}
+                      className="font-extrabold text-sm text-slate-900 dark:text-white cursor-pointer hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                      title="ক্লিক করে নাম কপি করুন"
+                    >
+                      {selectedOrderDetails.customerName}
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-teal-100 dark:bg-teal-950 text-teal-800 dark:text-teal-300 font-bold text-[10px]">
+                      {selectedOrderDetails.courier}
+                    </span>
+                  </div>
+
+                  <p className="text-slate-700 dark:text-slate-300 font-mono font-medium flex items-center gap-1.5 flex-wrap">
+                    <span>📞</span>
+                    <span
+                      onClick={() => copyDirectText(selectedOrderDetails.customerPhone, 'মোবাইল নম্বর')}
+                      className="cursor-pointer hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                      title="ক্লিক করে মোবাইল নম্বর কপি করুন"
+                    >
+                      {selectedOrderDetails.customerPhone}
+                    </span>
+                    {selectedOrderDetails.customerAltPhone && (
+                      <>
+                        <span className="text-slate-400">/</span>
+                        <span
+                          onClick={() =>
+                            copyDirectText(selectedOrderDetails.customerAltPhone!, 'বিকল্প মোবাইল নম্বর')
+                          }
+                          className="cursor-pointer hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                          title="ক্লিক করে বিকল্প মোবাইল নম্বর কপি করুন"
+                        >
+                          {selectedOrderDetails.customerAltPhone}
+                        </span>
+                      </>
+                    )}
+                  </p>
+
+                  <p
+                    onClick={() =>
+                      copyDirectText(
+                        `${selectedOrderDetails.address}${selectedOrderDetails.area ? ', ' + selectedOrderDetails.area : ''}, ${selectedOrderDetails.district}`,
+                        'ঠিকানা'
+                      )
+                    }
+                    className="text-slate-600 dark:text-slate-400 cursor-pointer hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                    title="ক্লিক করে সম্পূর্ণ ঠিকানা কপি করুন"
+                  >
+                    📍 {selectedOrderDetails.address}
+                    {selectedOrderDetails.area ? `, ${selectedOrderDetails.area}` : ''},{' '}
+                    <span className="font-bold text-teal-700 dark:text-teal-400">
+                      {selectedOrderDetails.district}
+                    </span>
+                  </p>
+
+                  {/* Booking / Tracking Number Display & Click-to-copy */}
+                  <div className="flex items-center gap-2 pt-0.5 text-slate-700 dark:text-slate-300 flex-wrap">
+                    <span className="text-slate-500 dark:text-slate-400 font-medium flex items-center gap-1">
+                      <Truck className="w-3.5 h-3.5 text-teal-600" /> বুকিং / ট্র্যাকিং নং:
+                    </span>
+                    {selectedOrderDetails.trackingNumber ? (
+                      <span
+                        onClick={() => copyDirectText(selectedOrderDetails.trackingNumber!, 'ট্র্যাকিং নম্বর')}
+                        className="font-mono font-bold text-teal-700 dark:text-teal-300 bg-teal-50 dark:bg-teal-950/60 px-2 py-0.5 rounded-md border border-teal-200 dark:border-teal-800 cursor-pointer hover:bg-teal-100 dark:hover:bg-teal-900 transition-colors"
+                        title="ক্লিক করে ট্র্যাকিং নম্বর কপি করুন"
+                      >
+                        {selectedOrderDetails.trackingNumber}
+                      </span>
+                    ) : (
+                      <span className="text-slate-400 italic text-[11px]">যুক্ত করা হয়নি</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-col sm:flex-row md:flex-col gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => copyCourierBookingInfo(selectedOrderDetails)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                      copiedCourierInfo
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-teal-600 hover:bg-teal-700 text-white'
+                    }`}
+                    title="কুরিয়ারে পার্সেল বুকিংয়ের জন্য গ্রাহকের তথ্য ও পণ্য তালিকা কপি করুন"
+                  >
+                    {copiedCourierInfo ? (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>কপি হয়েছে!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>কুরিয়ার বুকিং কপি</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => copyPackingInfo(selectedOrderDetails)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer ${
+                      copiedPackingInfo
+                        ? 'bg-emerald-600 text-white'
+                        : 'bg-slate-800 hover:bg-slate-900 dark:bg-slate-700 dark:hover:bg-slate-600 text-white border border-slate-700 dark:border-slate-600'
+                    }`}
+                    title="প্যাকিং টিমের জন্য CN/বুকিং নম্বর এবং পণ্যের তালিকা কপি করুন"
+                  >
+                    {copiedPackingInfo ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-300" />
+                        <span>কপি হয়েছে!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Package className="w-3.5 h-3.5 text-amber-400" />
+                        <span>প্যাকিং টেক্সট কপি</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Courier Financial Summary Banner */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-200 dark:border-slate-700/80">
+                <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-500 block">পণ্য সাবটোটাল</span>
+                  <span className="font-bold text-slate-800 dark:text-slate-200 text-xs">
+                    ৳{(selectedOrderDetails.subtotal ?? selectedOrderDetails.subTotal ?? 0).toLocaleString('bn-BD')}
+                  </span>
+                </div>
+                <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-teal-200 dark:border-teal-900/60">
+                  <span className="text-[10px] text-teal-600 font-bold block">ডেলিভারি চার্জ</span>
+                  <span className="font-extrabold text-teal-700 dark:text-teal-400 text-xs">
+                    +৳{selectedOrderDetails.deliveryCharge.toLocaleString('bn-BD')}
+                  </span>
+                </div>
+                <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-100 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-500 block">ছাড় / ডিসকাউন্ট</span>
+                  <span className="font-bold text-rose-600 text-xs">
+                    -৳{(selectedOrderDetails.discount || 0).toLocaleString('bn-BD')}
+                  </span>
+                </div>
+                <div className="bg-gradient-to-br from-teal-500 to-emerald-600 text-white p-2.5 rounded-xl shadow-xs">
+                  <span className="text-[10px] text-teal-100 block font-medium">ক্যাশ কালেকশন (COD)</span>
+                  <span className="font-black text-sm">
+                    ৳{(selectedOrderDetails.paymentStatus === 'Paid'
+                      ? 0
+                      : Math.max(0, selectedOrderDetails.grandTotal - (selectedOrderDetails.advancePaid || 0))
+                    ).toLocaleString('bn-BD')}
+                  </span>
+                </div>
+              </div>
+
+              {/* Total & Payment details row */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-[11px] font-medium text-slate-600 dark:text-slate-300">
+                <div>
+                  সর্বমোট বিল (Grand Total): <strong className="text-slate-900 dark:text-white font-black text-xs">৳{(Number(selectedOrderDetails.grandTotal) || 0).toLocaleString('bn-BD')}</strong>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span>পেমেন্ট মেথড: <strong>{selectedOrderDetails.paymentMethod}</strong></span>
+                  <span className={`px-2 py-0.5 rounded-md font-bold text-[10px] ${
+                    selectedOrderDetails.paymentStatus === 'Paid'
+                      ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                      : selectedOrderDetails.paymentStatus === 'Partial'
+                      ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                      : 'bg-rose-100 text-rose-800 dark:bg-rose-950 dark:text-rose-300'
+                  }`}>
+                    {selectedOrderDetails.paymentStatus}
+                  </span>
+                </div>
+              </div>
             </div>
 
             {/* Order Items Table */}
             <div>
-              <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider mb-2">পণ্যের তালিকা</h4>
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-                {selectedOrderDetails.items.map((item, idx) => (
-                  <div key={idx} className="py-2 flex justify-between">
-                    <span>
-                      {item.productName} x {item.quantity}
-                    </span>
-                    <span className="font-bold">৳{item.totalPrice}</span>
-                  </div>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <h4 className="font-bold text-xs text-slate-400 uppercase tracking-wider">
+                  পণ্যের বিবরণ ও তালিকা
+                </h4>
+                <span className="text-[10px] text-slate-400">
+                  (নামে ক্লিক করে কপি করুন)
+                </span>
+              </div>
+              <div className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+                {(selectedOrderDetails.items || []).map((item, idx) => {
+                  const qty = Number(item.quantity) || 1;
+                  const unit = Number(item.unitPrice) || 0;
+                  const total = Number(item.totalPrice) || qty * unit;
+                  return (
+                    <div
+                      key={idx}
+                      className="p-2.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors"
+                    >
+                      <div>
+                        <span
+                          onClick={() => copyDirectText(item.productName, 'পণ্যের নাম')}
+                          className="font-bold text-slate-800 dark:text-slate-200 cursor-pointer hover:text-teal-600 dark:hover:text-teal-400 transition-colors"
+                          title="ক্লিক করে পণ্যের নাম কপি করুন"
+                        >
+                          {item.productName}
+                        </span>
+                        <span className="text-[11px] text-slate-500 ml-2">
+                          ৳{unit.toLocaleString('bn-BD')} × {qty} টি
+                        </span>
+                      </div>
+                      <span className="font-black text-slate-900 dark:text-white">
+                        ৳{total.toLocaleString('bn-BD')}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -1053,9 +1375,11 @@ export const OrdersView: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  selectedOrders.forEach((id) => deleteOrder(id));
+                  deleteOrders(selectedOrders);
+                  const count = selectedOrders.length;
                   setSelectedOrders([]);
                   setConfirmBulkDelete(false);
+                  triggerToast(`${count} টি অর্ডার একবারে মুছে ফেলা হয়েছে`);
                 }}
                 className="px-5 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl shadow-md cursor-pointer"
               >

@@ -7,12 +7,13 @@
  * - Supports SQLite, MySQL, and PostgreSQL driver queries.
  */
 
-import { dbConnection, DatabaseQueryResult } from './connection';
+import { dbConnection, DatabaseQueryResult, getPool, checkMySqlConnection } from './connection';
 import { generateCreateTableQueries } from './schema';
 import { seedInitialData } from './seed';
 
 export class DatabaseManager {
   private isInitialized: boolean = false;
+  private isConnectedToMysql: boolean = false;
 
   public async initialize(): Promise<void> {
     if (this.isInitialized) return;
@@ -21,9 +22,25 @@ export class DatabaseManager {
     const driver = dbConnection.getDriver();
     console.log(`[DatabaseManager] Initializing schema for driver: "${driver}"`);
 
-    const ddlQueries = generateCreateTableQueries(driver);
-    for (const sql of ddlQueries) {
-      await this.execute(sql);
+    const status = await checkMySqlConnection();
+    if (status.connected) {
+      this.isConnectedToMysql = true;
+      console.log(`[DatabaseManager] Connected to MySQL database "${status.database}". Creating tables...`);
+      const pool = getPool();
+      const ddlQueries = generateCreateTableQueries('mysql');
+      for (const sql of ddlQueries) {
+        try {
+          await pool.query(sql);
+        } catch (err: any) {
+          console.error(`[DatabaseManager] DDL execution notice:`, err?.message || err);
+        }
+      }
+    } else {
+      console.warn(`[DatabaseManager] MySQL connection unavailable (${status.error?.message || status.error}). Using in-memory fallback.`);
+      const ddlQueries = generateCreateTableQueries('sqlite');
+      for (const sql of ddlQueries) {
+        this.executeInMemory(sql);
+      }
     }
 
     // Seed database with mock data if required
@@ -41,11 +58,18 @@ export class DatabaseManager {
       await this.initialize();
     }
 
-    // Abstract query execution handler
-    const driver = dbConnection.getDriver();
-    const storage = dbConnection.getStorage();
+    if (this.isConnectedToMysql) {
+      try {
+        const pool = getPool();
+        const [rows] = await pool.query(sql, params);
+        return { rows: rows as T[] };
+      } catch (err: any) {
+        console.error(`[DatabaseManager] MySQL query error:`, err?.message || err);
+      }
+    }
 
-    // In-memory / SQLite fallback simulation engine
+    // Fallback in-memory storage query
+    const storage = dbConnection.getStorage();
     const tableName = this.extractTableName(sql);
     if (tableName && storage.has(tableName)) {
       const records = storage.get(tableName) || [];
@@ -59,6 +83,24 @@ export class DatabaseManager {
    * Executes an INSERT / UPDATE / DELETE query
    */
   public async execute(sql: string, params: any[] = []): Promise<DatabaseQueryResult> {
+    if (!this.isInitialized) {
+      await this.initialize();
+    }
+
+    if (this.isConnectedToMysql) {
+      try {
+        const pool = getPool();
+        const [result] = await pool.query(sql, params);
+        return { rows: [], affectedRows: (result as any)?.affectedRows || 0 };
+      } catch (err: any) {
+        console.error(`[DatabaseManager] MySQL execute error:`, err?.message || err);
+      }
+    }
+
+    return this.executeInMemory(sql, params);
+  }
+
+  private executeInMemory(sql: string, params: any[] = []): DatabaseQueryResult {
     const storage = dbConnection.getStorage();
     const tableName = this.extractTableName(sql);
 

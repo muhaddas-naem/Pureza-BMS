@@ -111,18 +111,21 @@ export const ReportsView: React.FC = () => {
   const cancelledOrders = filteredOrders.filter((o) => o.orderStatus === 'Cancelled');
 
   // Key Financial Metrics
-  const totalSalesRevenue = recognizedOrders.reduce((acc, o) => acc + o.grandTotal, 0);
-  const pendingRevenue = pendingOrders.reduce((acc, o) => acc + o.grandTotal, 0);
+  const totalSalesRevenue = recognizedOrders.reduce((acc, o) => acc + (o.grandTotal || 0), 0);
+  const totalDeliveryRevenue = recognizedOrders.reduce((acc, o) => acc + (o.deliveryCharge || 0), 0);
+  const netProductRevenue = recognizedOrders.reduce((acc, o) => acc + (Math.max(0, (o.subtotal || 0) - (o.discount || 0))), 0);
+  const pendingRevenue = pendingOrders.reduce((acc, o) => acc + (o.grandTotal || 0), 0);
 
   const totalCOGS = recognizedOrders.reduce((acc, o) => {
-    const itemCost = o.items.reduce((iAcc, item) => iAcc + item.buyingPrice * item.quantity, 0);
+    const itemCost = (o.items || []).reduce((iAcc, item) => iAcc + (item.buyingPrice || 0) * (item.quantity || 1), 0);
     return acc + itemCost;
   }, 0);
 
-  const grossProfit = totalSalesRevenue - totalCOGS;
-  const totalOperatingExpenses = filteredExpenses.reduce((acc, e) => acc + e.amount, 0);
+  // Gross Profit = Net Product Sales - COGS (Excluding delivery pass-through)
+  const grossProfit = netProductRevenue - totalCOGS;
+  const totalOperatingExpenses = filteredExpenses.reduce((acc, e) => acc + (e.amount || 0), 0);
   const netProfit = grossProfit - totalOperatingExpenses;
-  const netProfitMargin = totalSalesRevenue > 0 ? ((netProfit / totalSalesRevenue) * 100).toFixed(1) : '0';
+  const netProfitMargin = netProductRevenue > 0 ? ((netProfit / netProductRevenue) * 100).toFixed(1) : '0';
 
   // Average Order Value (AOV)
   const aov = recognizedOrders.length > 0 ? Math.round(totalSalesRevenue / recognizedOrders.length) : 0;
@@ -144,13 +147,13 @@ export const ReportsView: React.FC = () => {
     } = {};
 
     recognizedOrders.forEach((o) => {
-      o.items.forEach((item) => {
+      (o.items || []).forEach((item) => {
         if (!pMap[item.productId]) {
           const matchedP = products.find((p) => p.id === item.productId);
           pMap[item.productId] = {
             id: item.productId,
             name: item.productName,
-            sku: matchedP?.sku || item.sku || 'N/A',
+            sku: matchedP?.sku || (item as any).sku || 'N/A',
             categoryName: matchedP?.categoryName || 'General',
             unitsSold: 0,
             revenue: 0,
@@ -159,9 +162,13 @@ export const ReportsView: React.FC = () => {
             stock: matchedP?.currentStock || 0,
           };
         }
-        const rev = item.sellingPrice * item.quantity;
-        const cost = item.buyingPrice * item.quantity;
-        pMap[item.productId].unitsSold += item.quantity;
+        const qty = Number(item.quantity) || 1;
+        const unit = Number(item.unitPrice) || (item as any).sellingPrice || 0;
+        const buy = Number(item.buyingPrice) || (item as any).buyPrice || 0;
+        const rev = Number(item.totalPrice) || (unit * qty);
+        const cost = buy * qty;
+
+        pMap[item.productId].unitsSold += qty;
         pMap[item.productId].revenue += rev;
         pMap[item.productId].cogs += cost;
         pMap[item.productId].profit += rev - cost;
@@ -366,7 +373,7 @@ export const ReportsView: React.FC = () => {
         {/* Card 1: Recognized Sales */}
         <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 relative overflow-hidden shadow-xs hover:shadow-md transition-shadow">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">স্বীকৃত বিক্রয় (Recognized)</span>
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">মোট স্বীকৃত বিক্রয় (Gross Sales)</span>
             <div className="p-2 bg-teal-50 dark:bg-teal-950/80 rounded-xl text-teal-600">
               <ShoppingBag className="w-4 h-4" />
             </div>
@@ -374,11 +381,15 @@ export const ReportsView: React.FC = () => {
           <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-2">
             ৳{totalSalesRevenue.toLocaleString('bn-BD')}
           </h3>
-          <div className="mt-2 flex items-center justify-between text-[11px]">
-            <span className="text-teal-600 font-bold flex items-center gap-1">
-              <TrendingUp className="w-3.5 h-3.5" /> {recognizedOrders.length} টি নিশ্চিত অর্ডার
-            </span>
-            <span className="text-slate-400 font-mono">AOV: ৳{aov}</span>
+          <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 border-t border-slate-100 dark:border-slate-800/80 pt-1.5">
+            <div className="flex items-center justify-between font-bold text-teal-600 dark:text-teal-400">
+              <span>পণ্য বিক্রি (ফি ছাড়া):</span>
+              <span>৳{netProductRevenue.toLocaleString('bn-BD')}</span>
+            </div>
+            <div className="flex items-center justify-between text-[10px]">
+              <span>ডেলিভারি চার্জ বাবদ:</span>
+              <span>৳{totalDeliveryRevenue.toLocaleString('bn-BD')}</span>
+            </div>
           </div>
         </div>
 
@@ -470,31 +481,41 @@ export const ReportsView: React.FC = () => {
               <DollarSign className="w-4 h-4 text-teal-600" /> আয়-ব্যয় ও লভ্যাংশ বিস্তারিত হিসাব বিবরণী
             </h3>
 
-            <div className="space-y-3 text-xs">
-              <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 dark:bg-slate-800/40">
-                <span className="font-bold text-slate-700 dark:text-slate-300">১. হিসাবভুক্ত মোট বিক্রয় (Recognized Revenue)</span>
+            <div className="space-y-2.5 text-xs">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/40">
+                <span className="font-bold text-slate-700 dark:text-slate-300">১. কাস্টমার থেকে মোট সংগৃহীত মূল্য (Gross Sales)</span>
                 <span className="font-black text-slate-900 dark:text-white text-sm">৳{totalSalesRevenue.toLocaleString('bn-BD')}</span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300">
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100/60 dark:bg-slate-800/20 text-slate-600 dark:text-slate-400">
+                <span>(-) কুরিয়ার ডেলিভারি ফি (Delivery Charge Pass-through)</span>
+                <span className="font-bold text-xs">৳{totalDeliveryRevenue.toLocaleString('bn-BD')}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-teal-50/70 dark:bg-teal-950/30 text-teal-800 dark:text-teal-300 font-bold">
+                <span>(=) মূল পণ্যের মোট বিক্রয় (Net Product Sales)</span>
+                <span className="font-black text-sm">৳{netProductRevenue.toLocaleString('bn-BD')}</span>
+              </div>
+
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300">
                 <span className="font-semibold">(-) বিক্রিত পণ্যের ক্রয়মূল্য (COGS)</span>
                 <span className="font-black text-sm">৳{totalCOGS.toLocaleString('bn-BD')}</span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-200 font-bold">
-                <span>(=) গ্রস প্রফিট (Gross Profit)</span>
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-900 dark:text-teal-200 font-bold">
+                <span>(=) পণ্যের গ্রস প্রফিট (Gross Profit)</span>
                 <span className="font-black text-base text-teal-600 dark:text-teal-400">৳{grossProfit.toLocaleString('bn-BD')}</span>
               </div>
 
-              <div className="flex items-center justify-between p-3 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300">
-                <span className="font-semibold">(-) অন্যান্য পরিচালনা / অফিস খরচ (Expenses)</span>
+              <div className="flex items-center justify-between p-2.5 rounded-xl bg-rose-50/50 dark:bg-rose-950/20 text-rose-800 dark:text-rose-300">
+                <span className="font-semibold">(-) অন্যান্য পরিচালনা / অফিস খরচ (Operating Expenses)</span>
                 <span className="font-black text-sm">৳{totalOperatingExpenses.toLocaleString('bn-BD')}</span>
               </div>
 
               <div className="flex items-center justify-between p-4 rounded-2xl bg-emerald-100/70 dark:bg-emerald-950/80 text-emerald-900 dark:text-emerald-100 border border-emerald-200 dark:border-emerald-800">
                 <div>
-                  <span className="font-black text-sm block">(=) চূড়ান্ত নিট মুনাফা (Net Profit)</span>
-                  <span className="text-[11px] text-emerald-700 dark:text-emerald-300">সকল খরচ বাদ দিয়ে আসল লাভ</span>
+                  <span className="font-black text-sm block">(=) চূড়ান্ত প্রকৃত নিট মুনাফা (Net Business Profit)</span>
+                  <span className="text-[11px] text-emerald-700 dark:text-emerald-300">ডেলিভারি চার্জ, পণ্য ক্রয় ও অফিস খরচ বাদ দিয়ে আসল লাভ</span>
                 </div>
                 <span className="font-black text-xl text-emerald-600 dark:text-emerald-400">
                   ৳{netProfit.toLocaleString('bn-BD')}

@@ -8,6 +8,7 @@ import {
   InventoryLog,
   Note,
   Order,
+  OrderItem,
   OrderStatus,
   Product,
   Supplier,
@@ -84,6 +85,7 @@ interface AppContextType {
   updateOrder: (order: Order) => void;
   updateOrderStatus: (orderId: string, newStatus: OrderStatus, notes?: string) => void;
   deleteOrder: (orderId: string) => void;
+  deleteOrders: (orderIds: string[]) => void;
   duplicateOrder: (orderId: string) => Order;
 
   addCustomer: (customer: Omit<Customer, 'id' | 'createdAt' | 'totalOrders' | 'totalSpent'>) => Customer;
@@ -120,6 +122,23 @@ interface AppContextType {
   updateSettings: (newSettings: Partial<SystemSettings>) => void;
   toggleDarkMode: () => void;
 
+  // Backup & Restore
+  exportAllDataJSON: () => void;
+  importAllDataJSON: (
+    jsonString: string,
+    mode?: 'replace' | 'merge'
+  ) => {
+    success: boolean;
+    message: string;
+    stats?: { orders: number; products: number; customers: number; expenses: number };
+  };
+
+  // Customer Order Prefill State
+  selectedCustomerForOrder: Customer | null;
+  initialOrderItemsForOrder: OrderItem[] | null;
+  initiateOrderForCustomer: (customer: Customer, initialItems?: OrderItem[]) => void;
+  clearSelectedCustomerForOrder: () => void;
+
   // Print Invoice Modal State
   selectedInvoiceOrder: Order | null;
   openInvoiceModal: (order: Order) => void;
@@ -137,6 +156,50 @@ interface AppContextType {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const sanitizeOrder = (order: any): Order => {
+  const items: OrderItem[] = Array.isArray(order?.items)
+    ? order.items.map((it: any, idx: number) => {
+        const qty = typeof it?.quantity === 'number' && !isNaN(it.quantity) ? it.quantity : (parseFloat(it?.quantity) || 1);
+        const unit = typeof it?.unitPrice === 'number' && !isNaN(it.unitPrice)
+          ? it.unitPrice
+          : (parseFloat(it?.unitPrice) || parseFloat(it?.sellingPrice) || parseFloat(it?.salePrice) || 0);
+        const buy = typeof it?.buyingPrice === 'number' && !isNaN(it.buyingPrice)
+          ? it.buyingPrice
+          : (parseFloat(it?.buyingPrice) || parseFloat(it?.buyPrice) || 0);
+        const total = typeof it?.totalPrice === 'number' && !isNaN(it.totalPrice)
+          ? it.totalPrice
+          : Math.round(qty * unit);
+        return {
+          id: it?.id || `item-${Date.now()}-${idx}`,
+          productId: it?.productId || '',
+          productName: it?.productName || 'পণ্য',
+          quantity: qty,
+          unitPrice: unit,
+          buyingPrice: buy,
+          totalPrice: total,
+        };
+      })
+    : [];
+
+  const subtotal = typeof order?.subtotal === 'number' && !isNaN(order.subtotal)
+    ? order.subtotal
+    : items.reduce((s: number, i: any) => s + (Number(i.totalPrice) || 0), 0);
+  const discount = Number(order?.discount) || 0;
+  const deliveryCharge = Number(order?.deliveryCharge) || 0;
+  const grandTotal = typeof order?.grandTotal === 'number' && !isNaN(order.grandTotal)
+    ? order.grandTotal
+    : Math.max(0, subtotal - discount + deliveryCharge);
+
+  return {
+    ...order,
+    items,
+    subtotal,
+    discount,
+    deliveryCharge,
+    grandTotal,
+  };
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('pbms_user');
@@ -146,6 +209,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedInvoiceOrder, setSelectedInvoiceOrder] = useState<Order | null>(null);
+
+  // Customer order prefill state
+  const [selectedCustomerForOrder, setSelectedCustomerForOrder] = useState<Customer | null>(null);
+  const [initialOrderItemsForOrder, setInitialOrderItemsForOrder] = useState<OrderItem[] | null>(null);
+
+  const initiateOrderForCustomer = (customer: Customer, initialItems?: OrderItem[]) => {
+    setSelectedCustomerForOrder(customer);
+    setInitialOrderItemsForOrder(initialItems || null);
+    setActiveTab('new-order');
+  };
+
+  const clearSelectedCustomerForOrder = () => {
+    setSelectedCustomerForOrder(null);
+    setInitialOrderItemsForOrder(null);
+  };
 
   // Security & Lockout State
   const [failedAttempts, setFailedAttempts] = useState<number>(() => {
@@ -159,8 +237,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Persistent States
   const [orders, setOrders] = useState<Order[]>(() => {
-    const saved = localStorage.getItem('pbms_orders');
-    return saved ? JSON.parse(saved) : initialOrders;
+    try {
+      const saved = localStorage.getItem('pbms_orders');
+      const parsed = saved ? JSON.parse(saved) : initialOrders;
+      return Array.isArray(parsed) ? parsed.map(sanitizeOrder) : initialOrders.map(sanitizeOrder);
+    } catch {
+      return initialOrders.map(sanitizeOrder);
+    }
   });
 
   const [customers, setCustomers] = useState<Customer[]>(() => {
@@ -195,7 +278,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [settings, setSettings] = useState<SystemSettings>(() => {
     const saved = localStorage.getItem('pbms_settings');
-    return saved ? JSON.parse(saved) : initialSettings;
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        return {
+          ...initialSettings,
+          ...parsed,
+          defaultCourier: parsed.defaultCourier || 'Steadfast',
+        };
+      } catch {
+        return initialSettings;
+      }
+    }
+    return initialSettings;
   });
 
   const [activityLogs, setActivityLogs] = useState<ActivityLog[]>(() => {
@@ -369,7 +464,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const foundUser = usersList.find(
       (u) =>
         normalizePhone(u.phone) === cleanPhone &&
-        (u.password === cleanPass || (cleanPhone === '01818585331' && cleanPass === 'naem@pureza'))
+        (u.password === cleanPass || (cleanPhone === '01818585331' && cleanPass === 'naem@pureza100M$'))
     );
 
     if (foundUser) {
@@ -387,7 +482,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     // Default Main Admin fallback
-    if (cleanPhone === '01818585331' && cleanPass === 'naem@pureza') {
+    if (cleanPhone === '01818585331' && cleanPass === 'naem@pureza100M$') {
       setFailedAttempts(0);
       setLockoutUntil(0);
       setCurrentUser(initialUser);
@@ -469,7 +564,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       orderData.orderStatus === 'Delivered' ||
       orderData.orderStatus === 'Completed';
 
-    const newOrder: Order = {
+    const rawNewOrder: Order = {
       ...orderData,
       id: 'ord-' + Date.now(),
       orderNumber,
@@ -483,6 +578,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
       ],
     };
+
+    const newOrder = sanitizeOrder(rawNewOrder);
 
     setOrders((prev) => [newOrder, ...prev]);
 
@@ -532,8 +629,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateOrder = (updatedOrder: Order) => {
-    setOrders((prev) => prev.map((o) => (o.id === updatedOrder.id ? updatedOrder : o)));
-    logActivity('অর্ডার তথ্য পরিবর্তন', `অর্ডার #${updatedOrder.orderNumber} এর বিবরণ আপডেট করা হয়েছে।`, 'order');
+    const sanitized = sanitizeOrder(updatedOrder);
+    setOrders((prev) => prev.map((o) => (o.id === sanitized.id ? sanitized : o)));
+    logActivity('অর্ডার তথ্য পরিবর্তন', `অর্ডার #${sanitized.orderNumber} এর বিবরণ আপডেট করা হয়েছে।`, 'order');
   };
 
   const updateOrderStatus = (orderId: string, newStatus: OrderStatus, notes?: string) => {
@@ -609,19 +707,27 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       );
     }
 
+    const isDeliveredOrCompleted = newStatus === 'Delivered' || newStatus === 'Completed';
+
     setOrders((prev) =>
       prev.map((o) => {
         if (o.id === orderId) {
+          const updatedPaymentStatus = isDeliveredOrCompleted ? 'Paid' : o.paymentStatus;
           return {
             ...o,
             orderStatus: newStatus,
+            paymentStatus: updatedPaymentStatus,
             statusHistory: [
               ...o.statusHistory,
               {
                 status: newStatus,
                 timestamp: now,
                 updatedBy: currentUser?.name || 'Staff',
-                notes: notes || `স্ট্যাটাস পরিবর্তিত হয়ে ${newStatus} হয়েছে`,
+                notes:
+                  notes ||
+                  (isDeliveredOrCompleted
+                    ? `স্ট্যাটাস '${newStatus}' হওয়ায় পেমেন্ট স্ট্যাটাস স্বয়ংক্রিয়ভাবে 'Paid' করা হয়েছে`
+                    : `স্ট্যাটাস পরিবর্তিত হয়ে '${newStatus}' হয়েছে`),
               },
             ],
           };
@@ -630,15 +736,117 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    logActivity('অর্ডার স্ট্যাটাস আপডেট', `অর্ডার #${orderNum} এর স্ট্যাটাস '${prevStatus}' থেকে '${newStatus}' করা হয়েছে।`);
+    logActivity(
+      'অর্ডার স্ট্যাটাস আপডেট',
+      `অর্ডার #${orderNum} এর স্ট্যাটাস '${prevStatus}' থেকে '${newStatus}' করা হয়েছে${
+        isDeliveredOrCompleted ? ' এবং পেমেন্ট Paid করা হয়েছে।' : '।'
+      }`,
+      'order'
+    );
   };
 
   const deleteOrder = (orderId: string) => {
     const target = orders.find((o) => o.id === orderId);
-    if (target) {
-      setOrders((prev) => prev.filter((o) => o.id !== orderId));
-      logActivity('অর্ডার মুছে ফেলা', `অর্ডার #${target.orderNumber} সিস্টেম থেকে ডিলিট করা হয়েছে।`);
-    }
+    if (!target) return;
+
+    const remainingOrders = orders.filter((o) => o.id !== orderId);
+    setOrders(remainingOrders);
+
+    // Sync Customer metrics for the customer of deleted order
+    const isSalesRecognized = (st: OrderStatus) =>
+      st === 'Confirmed' ||
+      st === 'Invoice Generated' ||
+      st === 'Processing' ||
+      st === 'Packed' ||
+      st === 'Shipped' ||
+      st === 'Delivered' ||
+      st === 'Completed';
+
+    const targetPhone = target.customerPhone.trim();
+    const remainingCustOrders = remainingOrders.filter(
+      (o) =>
+        o.customerPhone.trim() === targetPhone ||
+        (targetPhone.length >= 8 && o.customerPhone.endsWith(targetPhone))
+    );
+
+    const newTotalSpent = remainingCustOrders
+      .filter((o) => isSalesRecognized(o.orderStatus))
+      .reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
+
+    const latestDate = remainingCustOrders[0]?.date || undefined;
+
+    setCustomers((prevCusts) =>
+      prevCusts.map((c) => {
+        if (
+          c.phone.trim() === targetPhone ||
+          (targetPhone.length >= 8 && c.phone.endsWith(targetPhone))
+        ) {
+          return {
+            ...c,
+            totalOrders: remainingCustOrders.length,
+            totalSpent: newTotalSpent,
+            lastOrderDate: latestDate,
+          };
+        }
+        return c;
+      })
+    );
+
+    logActivity('অর্ডার মুছে ফেলা', `অর্ডার #${target.orderNumber} (${target.customerName}) সিস্টেম থেকে ডিলিট করা হয়েছে।`, 'order');
+  };
+
+  const deleteOrders = (orderIds: string[]) => {
+    if (!orderIds || orderIds.length === 0) return;
+    const idSet = new Set(orderIds);
+    const deletedList = orders.filter((o) => idSet.has(o.id));
+    if (deletedList.length === 0) return;
+
+    const remainingOrders = orders.filter((o) => !idSet.has(o.id));
+    setOrders(remainingOrders);
+
+    const isSalesRecognized = (st: OrderStatus) =>
+      st === 'Confirmed' ||
+      st === 'Invoice Generated' ||
+      st === 'Processing' ||
+      st === 'Packed' ||
+      st === 'Shipped' ||
+      st === 'Delivered' ||
+      st === 'Completed';
+
+    // Recalculate customer metrics for all affected phones
+    const affectedPhones: string[] = deletedList
+      .map((o) => (o.customerPhone || '').trim())
+      .filter((p, idx, arr) => p !== '' && arr.indexOf(p) === idx);
+
+    setCustomers((prevCusts) =>
+      prevCusts.map((c) => {
+        const cPhone = (c.phone || '').trim();
+        const isAffected = affectedPhones.some(
+          (p: string) => p === cPhone || (p.length >= 8 && cPhone.endsWith(p)) || (cPhone.length >= 8 && p.endsWith(cPhone))
+        );
+
+        if (isAffected) {
+          const custRemainingOrders = remainingOrders.filter(
+            (o) =>
+              o.customerPhone.trim() === cPhone ||
+              (cPhone.length >= 8 && o.customerPhone.endsWith(cPhone))
+          );
+          const newSpent = custRemainingOrders
+            .filter((o) => isSalesRecognized(o.orderStatus))
+            .reduce((sum, o) => sum + (Number(o.grandTotal) || 0), 0);
+
+          return {
+            ...c,
+            totalOrders: custRemainingOrders.length,
+            totalSpent: newSpent,
+            lastOrderDate: custRemainingOrders[0]?.date || undefined,
+          };
+        }
+        return c;
+      })
+    );
+
+    logActivity('বাল্ক অর্ডার ডিলিট', `একত্রে ${deletedList.length} টি অর্ডার সিস্টেম থেকে সফলভাবে মুছে ফেলা হয়েছে।`, 'order');
   };
 
   const duplicateOrder = (orderId: string): Order => {
@@ -649,7 +857,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const newNum = `${settings.orderPrefix || 'PBMS-ORD-'}${nextNum}`;
     const now = new Date().toLocaleString('bn-BD');
 
-    const duplicated: Order = {
+    const rawDuplicated: Order = {
       ...target,
       id: 'ord-' + Date.now(),
       orderNumber: newNum,
@@ -664,6 +872,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         },
       ],
     };
+
+    const duplicated = sanitizeOrder(rawDuplicated);
 
     setOrders((prev) => [duplicated, ...prev]);
     logActivity('অর্ডার ডুপ্লিকেট', `অর্ডার #${target.orderNumber} কপি করে নতুন অর্ডার #${newNum} তৈরি হয়েছে।`);
@@ -847,12 +1057,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const updateProduct = (updated: Product) => {
     const cat = categories.find((c) => c.id === updated.categoryId);
+    const updatedCategoryName = cat?.name || updated.categoryName;
+
     setProducts((prev) =>
       prev.map((p) =>
-        p.id === updated.id ? { ...updated, categoryName: cat?.name || p.categoryName } : p
+        p.id === updated.id ? { ...updated, categoryName: updatedCategoryName } : p
       )
     );
-    logActivity('পণ্য আপডেট', `পণ্য '${updated.name}' এর তথ্য পরিবর্তন করা হয়েছে।`, 'product');
+
+    // Sync product name in all existing and historic orders so old orders & invoices show the new name
+    setOrders((prevOrders) =>
+      prevOrders.map((ord) => {
+        let hasChanged = false;
+        const newItems = (ord.items || []).map((it) => {
+          if (it.productId === updated.id && it.productName !== updated.name) {
+            hasChanged = true;
+            return {
+              ...it,
+              productName: updated.name,
+              buyingPrice: updated.buyingPrice || it.buyingPrice,
+            };
+          }
+          return it;
+        });
+        return hasChanged ? { ...ord, items: newItems } : ord;
+      })
+    );
+
+    logActivity('পণ্য আপডেট', `পণ্য '${updated.name}' এর তথ্য এবং সংশ্লিষ্ট সকল অর্ডারের পণ্যের নাম আপডেট করা হয়েছে।`, 'product');
   };
 
   const deleteProduct = (productId: string) => {
@@ -983,6 +1215,177 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setSettings((prev) => ({ ...prev, darkMode: !prev.darkMode }));
   };
 
+  // Full System Data Export & Import
+  const exportAllDataJSON = () => {
+    const backupData = {
+      version: '1.0.0',
+      exportedAt: new Date().toISOString(),
+      appName: 'Pureza Business Management System (PBMS)',
+      companyName: settings.companyName || 'Pureza Skincare',
+      data: {
+        orders,
+        customers,
+        products,
+        categories,
+        expenses,
+        expenseCategories,
+        suppliers,
+        notesList,
+        inventoryLogs,
+        settings,
+        activityLogs,
+        usersList,
+      },
+    };
+
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    const downloadAnchor = document.createElement('a');
+    const nowStr = new Date().toISOString().slice(0, 10);
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `pbms_full_backup_${nowStr}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+
+    logActivity('ডেটা ব্যাকআপ এক্সপোর্ট', 'সকল সিস্টেম ডেটা সফলভাবে JSON ব্যাকআপ হিসেবে এক্সপোর্ট করা হয়েছে।', 'system');
+  };
+
+  const importAllDataJSON = (
+    jsonString: string,
+    mode: 'replace' | 'merge' = 'replace'
+  ): { success: boolean; message: string; stats?: { orders: number; products: number; customers: number; expenses: number } } => {
+    try {
+      const parsed = JSON.parse(jsonString);
+      const incoming = parsed.data || parsed;
+
+      if (!incoming || typeof incoming !== 'object') {
+        return { success: false, message: 'অবৈধ ব্যাকআপ ফাইল! কোনো সঠিক ডেটা খুঁজে পাওয়া যায়নি।' };
+      }
+
+      if (mode === 'replace') {
+        if (Array.isArray(incoming.orders)) {
+          const sanitizedOrders = incoming.orders.map(sanitizeOrder);
+          setOrders(sanitizedOrders);
+          localStorage.setItem('pbms_orders', JSON.stringify(sanitizedOrders));
+        }
+        if (Array.isArray(incoming.customers)) {
+          setCustomers(incoming.customers);
+          localStorage.setItem('pbms_customers', JSON.stringify(incoming.customers));
+        }
+        if (Array.isArray(incoming.products)) {
+          setProducts(incoming.products);
+          localStorage.setItem('pbms_products', JSON.stringify(incoming.products));
+        }
+        if (Array.isArray(incoming.categories)) {
+          setCategories(incoming.categories);
+          localStorage.setItem('pbms_categories', JSON.stringify(incoming.categories));
+        }
+        if (Array.isArray(incoming.expenses)) {
+          setExpenses(incoming.expenses);
+          localStorage.setItem('pbms_expenses', JSON.stringify(incoming.expenses));
+        }
+        if (Array.isArray(incoming.expenseCategories)) {
+          setExpenseCategories(incoming.expenseCategories);
+          localStorage.setItem('pbms_exp_categories', JSON.stringify(incoming.expenseCategories));
+        }
+        if (Array.isArray(incoming.suppliers)) {
+          setSuppliers(incoming.suppliers);
+          localStorage.setItem('pbms_suppliers', JSON.stringify(incoming.suppliers));
+        }
+        if (Array.isArray(incoming.notesList)) {
+          setNotesList(incoming.notesList);
+          localStorage.setItem('pbms_notes', JSON.stringify(incoming.notesList));
+        }
+        if (Array.isArray(incoming.inventoryLogs)) {
+          setInventoryLogs(incoming.inventoryLogs);
+          localStorage.setItem('pbms_inventory_logs', JSON.stringify(incoming.inventoryLogs));
+        }
+        if (incoming.settings && typeof incoming.settings === 'object') {
+          setSettings(incoming.settings);
+          localStorage.setItem('pbms_settings', JSON.stringify(incoming.settings));
+        }
+        if (Array.isArray(incoming.usersList)) {
+          setUsersList(incoming.usersList);
+          localStorage.setItem('pbms_users_list', JSON.stringify(incoming.usersList));
+        }
+      } else {
+        // Merge mode
+        if (Array.isArray(incoming.orders)) {
+          setOrders((prev) => {
+            const map = new Map(prev.map((i) => [i.id, sanitizeOrder(i)]));
+            incoming.orders.forEach((o: Order) => map.set(o.id, sanitizeOrder(o)));
+            const updated = Array.from(map.values());
+            localStorage.setItem('pbms_orders', JSON.stringify(updated));
+            return updated;
+          });
+        }
+        if (Array.isArray(incoming.customers)) {
+          setCustomers((prev) => {
+            const map = new Map(prev.map((i) => [i.id, i]));
+            incoming.customers.forEach((c: Customer) => map.set(c.id, c));
+            const updated = Array.from(map.values());
+            localStorage.setItem('pbms_customers', JSON.stringify(updated));
+            return updated;
+          });
+        }
+        if (Array.isArray(incoming.products)) {
+          setProducts((prev) => {
+            const map = new Map(prev.map((i) => [i.id, i]));
+            incoming.products.forEach((p: Product) => map.set(p.id, p));
+            const updated = Array.from(map.values());
+            localStorage.setItem('pbms_products', JSON.stringify(updated));
+            return updated;
+          });
+        }
+        if (Array.isArray(incoming.categories)) {
+          setCategories((prev) => {
+            const map = new Map(prev.map((i) => [i.id, i]));
+            incoming.categories.forEach((cat: Category) => map.set(cat.id, cat));
+            const updated = Array.from(map.values());
+            localStorage.setItem('pbms_categories', JSON.stringify(updated));
+            return updated;
+          });
+        }
+        if (Array.isArray(incoming.expenses)) {
+          setExpenses((prev) => {
+            const map = new Map(prev.map((i) => [i.id, i]));
+            incoming.expenses.forEach((e: Expense) => map.set(e.id, e));
+            const updated = Array.from(map.values());
+            localStorage.setItem('pbms_expenses', JSON.stringify(updated));
+            return updated;
+          });
+        }
+      }
+
+      const orderCount = Array.isArray(incoming.orders) ? incoming.orders.length : 0;
+      const prodCount = Array.isArray(incoming.products) ? incoming.products.length : 0;
+      const custCount = Array.isArray(incoming.customers) ? incoming.customers.length : 0;
+      const expCount = Array.isArray(incoming.expenses) ? incoming.expenses.length : 0;
+
+      logActivity(
+        'ডেটা ব্যাকআপ ইমপোর্ট',
+        `ব্যাকআপ সফলভাবে ইমপোর্ট করা হয়েছে (${mode === 'replace' ? 'সম্পূর্ণ প্রতিস্থাপন' : 'স্মার্ট মার্জ'})।`,
+        'system'
+      );
+
+      return {
+        success: true,
+        message: `সফলভাবে ইমপোর্ট সম্পন্ন হয়েছে! ${orderCount} টি অর্ডার, ${prodCount} টি পণ্য, ${custCount} জন গ্রাহক রিস্টোর করা হয়েছে।`,
+        stats: {
+          orders: orderCount,
+          products: prodCount,
+          customers: custCount,
+          expenses: expCount,
+        },
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: `ইমপোর্টে সমস্যা: ${err?.message || 'ফাইলের ডেটা পার্স করা যায়নি'}`,
+      };
+    }
+  };
+
   const openInvoiceModal = (order: Order) => {
     setSelectedInvoiceOrder(order);
   };
@@ -1021,6 +1424,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateOrder,
         updateOrderStatus,
         deleteOrder,
+        deleteOrders,
         duplicateOrder,
         addCustomer,
         updateCustomer,
@@ -1048,9 +1452,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteExpenseCategory,
         updateSettings,
         toggleDarkMode,
+        exportAllDataJSON,
+        importAllDataJSON,
         selectedInvoiceOrder,
         openInvoiceModal,
         closeInvoiceModal,
+        selectedCustomerForOrder,
+        initialOrderItemsForOrder,
+        initiateOrderForCustomer,
+        clearSelectedCustomerForOrder,
         markNotificationAsRead,
         markAllNotificationsAsRead,
         clearNotifications,

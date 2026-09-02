@@ -239,19 +239,6 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
           {isFullscreen ? <Minimize className="w-5 h-5 text-teal-600 dark:text-teal-400" /> : <Maximize className="w-5 h-5" />}
         </button>
 
-        {/* AI Assistant Quick Trigger */}
-        <button
-          onClick={() => setActiveTab('ai-assistant')}
-          className="p-2 rounded-xl text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 border border-emerald-200 dark:border-emerald-800 transition-all relative group"
-          title="Pureza AI সহকারী"
-        >
-          <Bot className="w-5 h-5" />
-          <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
-          </span>
-        </button>
-
         {/* Notifications Popover Bell */}
         <div className="relative">
           <button
@@ -502,20 +489,24 @@ export const Header: React.FC<HeaderProps> = ({ setMobileOpen }) => {
           )}
         </div>
 
-        {/* User Profile Info */}
-        <div className="flex items-center space-x-2.5 gap-2 pl-2 border-l border-slate-200 dark:border-slate-800">
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shadow-md">
-            {currentUser?.name ? currentUser.name.charAt(0) : 'P'}
+        {/* User Profile Info - Clickable to open Profile */}
+        <button
+          onClick={() => setActiveTab('profile')}
+          className="flex items-center space-x-2.5 gap-2 pl-2 border-l border-slate-200 dark:border-slate-800 hover:opacity-80 transition-opacity cursor-pointer group text-left"
+          title="ইউজার প্রোফাইল দেখুন"
+        >
+          <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-teal-500 to-emerald-500 flex items-center justify-center text-white font-bold text-sm shadow-md group-hover:scale-105 transition-transform">
+            {currentUser?.name ? currentUser.name.charAt(0) : 'N'}
           </div>
           <div className="hidden xl:block text-left">
-            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight">
-              {currentUser?.name || 'মাসুদুর রহমান'}
+            <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 leading-tight group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors">
+              {currentUser?.name || 'নাঈম ইসলাম'}
             </h4>
             <span className="text-[10px] font-medium px-1.5 py-0.2 rounded-md bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300">
               {currentUser?.role || 'Admin'}
             </span>
           </div>
-        </div>
+        </button>
       </div>
     </header>
   );

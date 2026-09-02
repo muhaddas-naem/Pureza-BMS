@@ -5,12 +5,12 @@ dotenv.config();
 export const config = {
   port: parseInt(process.env.PORT || '3000', 10),
   nodeEnv: process.env.NODE_ENV || 'development',
-  dbDriver: (process.env.DB_DRIVER || 'sqlite').toLowerCase(),
+  dbDriver: (process.env.DB_DRIVER || 'mysql').toLowerCase(),
   dbHost: process.env.DB_HOST || 'localhost',
   dbPort: parseInt(process.env.DB_PORT || '3306', 10),
-  dbUser: process.env.DB_USER || 'root',
-  dbPassword: process.env.DB_PASSWORD || '',
-  dbName: process.env.DB_NAME || 'pbms_db',
+  dbUser: process.env.DB_USER || 'purezast_pbms',
+  dbPassword: process.env.DB_PASSWORD || 'rhqn3RUDPj$^iSR',
+  dbName: (process.env.DB_NAME && process.env.DB_NAME !== 'pbms_db') ? process.env.DB_NAME : 'purezast_pbms',
   openRouterApiKey:
     process.env.OPENROUTER_API_KEY ||
     process.env.GEMINI_API_KEY ||

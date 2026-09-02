@@ -1,11 +1,11 @@
-export function generateSqlSchema(): string {
-  return `-- Pureza Business Management System (PBMS) - Core PHP & MySQL Schema DDL
+export function generateSqlSchema(dbName: string = 'purezast_pbms'): string {
+  return `-- Pureza Business Management System (PBMS) - Production MySQL Schema DDL
 -- Generated: ${new Date().toISOString()}
 
 SET FOREIGN_KEY_CHECKS = 0;
 
-CREATE DATABASE IF NOT EXISTS \`pbms_db\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE \`pbms_db\`;
+CREATE DATABASE IF NOT EXISTS \`${dbName}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE \`${dbName}\`;
 
 -- 1. users table
 CREATE TABLE IF NOT EXISTS \`users\` (

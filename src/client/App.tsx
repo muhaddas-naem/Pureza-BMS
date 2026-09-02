@@ -54,7 +54,6 @@ export function App() {
           {activeTab === 'expenses' && <ExpensesView />}
           {activeTab === 'expense-categories' && <ExpenseCategoriesView />}
           {activeTab === 'reports' && <ReportsView />}
-          {activeTab === 'ai-assistant' && <AiAssistantView />}
           {activeTab === 'users' && <UsersView />}
           {activeTab === 'settings' && <SettingsView />}
           {activeTab === 'profile' && <ProfileView />}

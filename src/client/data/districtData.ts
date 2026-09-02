@@ -68,6 +68,7 @@ export const bdDistrictsList: DistrictItem[] = [
   { bn: 'মৌলভীবাজার', en: 'Moulvibazar' },
   { bn: 'সুনামগঞ্জ', en: 'Sunamganj' },
   { bn: 'বরগুনা', en: 'Barguna' },
+  { bn: 'গাইবান্ধা', en: 'Gaibandha' },
 ];
 
 export function searchDistricts(query: string): DistrictItem[] {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Plus,
   Trash2,
@@ -25,10 +25,20 @@ import { useApp } from '../context/AppContext';
 import { bdDistricts } from '../data/mockData';
 import { CourierName, Customer, OrderItem, OrderStatus, PaymentMethod, PaymentStatus } from '../types';
 import { DistrictSearchSelect } from '../components/DistrictSearchSelect';
+import { ThanaSearchSelect } from '../components/ThanaSearchSelect';
 import { ProductSearchSelect } from '../components/ProductSearchSelect';
 
 export const NewOrderView: React.FC = () => {
-  const { products, customers, addOrder, setActiveTab, settings } = useApp();
+  const {
+    products,
+    customers,
+    addOrder,
+    setActiveTab,
+    settings,
+    selectedCustomerForOrder,
+    initialOrderItemsForOrder,
+    clearSelectedCustomerForOrder,
+  } = useApp();
 
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -65,10 +75,54 @@ export const NewOrderView: React.FC = () => {
   const [deliveryCharge, setDeliveryCharge] = useState(settings.deliveryChargeInsideDhaka || 80);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash on Delivery');
   const [paymentStatus, setPaymentStatus] = useState<PaymentStatus>('Unpaid');
-  const [courier, setCourier] = useState<CourierName>('Pathao');
+  const [courier, setCourier] = useState<CourierName>(
+    (settings.defaultCourier as CourierName) || 'Steadfast'
+  );
   const [trackingNumber, setTrackingNumber] = useState('');
   const [orderStatus, setOrderStatus] = useState<OrderStatus>('New');
   const [notes, setNotes] = useState('');
+
+  // Sync default courier whenever settings change
+  useEffect(() => {
+    if (settings.defaultCourier) {
+      setCourier(settings.defaultCourier as CourierName);
+    }
+  }, [settings.defaultCourier]);
+
+  // Auto-populate when redirected from Customer Profile (selectedCustomerForOrder)
+  useEffect(() => {
+    if (selectedCustomerForOrder) {
+      const cust = selectedCustomerForOrder;
+      setCustomerName(cust.name || '');
+      setCustomerPhone(cust.phone || '');
+      setCustomerAltPhone(cust.altPhone || '');
+      setDistrict(cust.district || 'ঢাকা');
+      setArea(cust.area || '');
+      setAddress(cust.address || '');
+      // Note: Do NOT copy internal customer CRM notes/tags into order delivery notes
+      setNotes('');
+      setAutoFilled(true);
+      setMatchedCustomerName(cust.name);
+
+      if (cust.district === 'ঢাকা') {
+        setDeliveryCharge(settings.deliveryChargeInsideDhaka || 80);
+      } else {
+        setDeliveryCharge(settings.deliveryChargeOutsideDhaka || 150);
+      }
+
+      if (initialOrderItemsForOrder && initialOrderItemsForOrder.length > 0) {
+        setItems(
+          initialOrderItemsForOrder.map((it, idx) => ({
+            ...it,
+            id: 'item-' + Date.now() + '-' + idx,
+          }))
+        );
+      }
+
+      // Clear the trigger so subsequent manual actions are clean
+      clearSelectedCustomerForOrder();
+    }
+  }, [selectedCustomerForOrder, initialOrderItemsForOrder]);
 
   // Handle District Change to Auto Update Delivery Charge
   const handleDistrictChange = (selectedDist: string) => {
@@ -292,7 +346,7 @@ export const NewOrderView: React.FC = () => {
   };
 
   const handleQtyChange = (index: number, qty: number) => {
-    const validQty = Math.max(0.1, Math.round(qty * 100) / 100);
+    const validQty = Math.max(0.01, Math.round(qty * 100) / 100);
     setItems((prev) => {
       const updated = [...prev];
       const unit = updated[index].unitPrice;
@@ -372,15 +426,6 @@ export const NewOrderView: React.FC = () => {
           <p className="text-xs text-slate-500">অর্ডারের তথ্য পূরণ করে বুকিং নিশ্চিত করুন</p>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setShowAiModal(true)}
-            className="px-4 py-2 bg-gradient-to-r from-teal-600 to-emerald-600 hover:from-teal-700 hover:to-emerald-700 text-white font-bold rounded-xl text-xs flex items-center gap-2 shadow-md shadow-teal-600/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
-          >
-            <Wand2 className="w-4 h-4 text-amber-300" />
-            <span>AI Assist (অটো-ফিল)</span>
-          </button>
-
           <button
             onClick={() => setActiveTab('orders')}
             className="px-4 py-2 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs hover:bg-slate-200 cursor-pointer"
@@ -470,7 +515,7 @@ export const NewOrderView: React.FC = () => {
                 required
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="যেমন: সাদিয়া তাসনিম"
+                placeholder="যেমন: রহিমা ভানু"
                 className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500"
               />
             </div>
@@ -502,14 +547,13 @@ export const NewOrderView: React.FC = () => {
 
             <div>
               <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                থানা / এলাকা (Area)
+                থানা / উপজেলা (Area) <span className="text-[10px] text-teal-600 font-normal">(English/বাংলা অটো সাজেস্ট ও কাস্টম)</span>
               </label>
-              <input
-                type="text"
+              <ThanaSearchSelect
                 value={area}
-                onChange={(e) => setArea(e.target.value)}
-                placeholder="যেমন: ধানমন্ডি, গুলশান, পাঁচলাইশ"
-                className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-teal-500"
+                onChange={(selectedArea) => setArea(selectedArea)}
+                district={district}
+                placeholder="থানা নির্বাচন করুন বা সরাসরি লিখুন..."
               />
             </div>
 
@@ -535,13 +579,9 @@ export const NewOrderView: React.FC = () => {
             <h3 className="font-bold text-sm text-slate-800 dark:text-white flex items-center gap-2">
               <Package className="w-4 h-4 text-teal-600" /> ২. অর্ডারকৃত পণ্য নির্বাচন
             </h3>
-            <button
-              type="button"
-              onClick={addItemRow}
-              className="px-3 py-1.5 bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300 text-xs font-bold rounded-xl hover:bg-teal-100 flex items-center gap-1 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" /> পণ্য যোগ করুন
-            </button>
+            <span className="text-xs text-slate-400 font-medium">
+              মোট আইটেম: <strong className="text-teal-600">{items.length}</strong> টি
+            </span>
           </div>
 
           <div className="space-y-3">
@@ -564,27 +604,34 @@ export const NewOrderView: React.FC = () => {
                   <div className="flex items-center gap-1">
                     <input
                       type="number"
-                      step="0.1"
-                      min="0.1"
+                      step="0.01"
+                      min="0.01"
                       value={item.quantity}
-                      onChange={(e) => handleQtyChange(index, parseFloat(e.target.value) || 0.5)}
+                      onChange={(e) => handleQtyChange(index, parseFloat(e.target.value) || 0.25)}
                       className="w-full p-2 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-center font-bold text-slate-900 dark:text-white"
                     />
                   </div>
-                  {/* Preset Pills for 0.5kg, 1kg, 1.5kg etc. */}
+                  {/* Preset Pills for 250g (0.25), 0.5kg, 1kg, 1.5kg, 2kg, 3kg */}
                   <div className="flex flex-wrap gap-1 mt-1.5">
-                    {[0.5, 1, 1.5, 2, 3].map((preset) => (
+                    {[
+                      { val: 0.25, label: '250 গ্রাম' },
+                      { val: 0.5, label: '0.5 কেজি' },
+                      { val: 1, label: '1 কেজি' },
+                      { val: 1.5, label: '1.5 কেজি' },
+                      { val: 2, label: '2 কেজি' },
+                      { val: 3, label: '3 কেজি' },
+                    ].map((preset) => (
                       <button
-                        key={preset}
+                        key={preset.val}
                         type="button"
-                        onClick={() => handleQtyChange(index, preset)}
+                        onClick={() => handleQtyChange(index, preset.val)}
                         className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-all ${
-                          item.quantity === preset
+                          item.quantity === preset.val
                             ? 'bg-teal-600 text-white shadow-xs'
                             : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 hover:bg-teal-100 dark:hover:bg-teal-900'
                         }`}
                       >
-                        {preset} কেজি
+                        {preset.label}
                       </button>
                     ))}
                   </div>
@@ -612,6 +659,17 @@ export const NewOrderView: React.FC = () => {
               </div>
             ))}
           </div>
+
+          {/* Bottom Right Add Product Button */}
+          <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800">
+            <button
+              type="button"
+              onClick={addItemRow}
+              className="px-4 py-2 bg-teal-50 text-teal-700 dark:bg-teal-950 dark:text-teal-300 text-xs font-bold rounded-xl hover:bg-teal-100 dark:hover:bg-teal-900 border border-teal-200 dark:border-teal-800 flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+            >
+              <Plus className="w-4 h-4" /> + আরও পণ্য যোগ করুন
+            </button>
+          </div>
         </div>
 
         {/* Courier & Payment Config Grid */}
@@ -630,12 +688,12 @@ export const NewOrderView: React.FC = () => {
                 onChange={(e) => setCourier(e.target.value as CourierName)}
                 className="w-full p-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 font-semibold"
               >
-                <option value="Pathao">পাঠাও (Pathao Courier)</option>
-                <option value="Steadfast">স্টিডফাস্ট (Steadfast Courier)</option>
-                <option value="RedX">রেডএক্স (RedX)</option>
+                <option value="Steadfast">স্টিডফাস্ট (Steadfast Courier) - ডিফল্ট</option>
+                <option value="Sundarban">সুন্দরবন কুরিয়ার (Sundarban Courier)</option>
+                <option value="Pathao">পাঠাও কুরিয়ার (Pathao Courier)</option>
+                <option value="RedX">রেডএক্স (RedX Delivery)</option>
                 <option value="Paperfly">পেপারফ্লাই (Paperfly)</option>
-                <option value="Sundarban">সুন্দরবন কুরিয়ার (Sundarban)</option>
-                <option value="Other">অন্যান্য কুরিয়ার</option>
+                <option value="Other">অন্যান্য কুরিয়ার (Other)</option>
               </select>
             </div>
 

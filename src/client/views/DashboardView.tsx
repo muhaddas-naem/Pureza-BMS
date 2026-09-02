@@ -39,17 +39,24 @@ export const DashboardView: React.FC = () => {
   const isSalesRecognized = (st: string) => st === 'Shipped' || st === 'Delivered' || st === 'Completed';
   const isPending = (st: string) => st === 'New' || st === 'Confirmed' || st === 'Invoice Generated' || st === 'Processing' || st === 'Packed';
 
+  const isTodayOrder = (o: { date?: string; orderDate?: string; createdAt?: string }) => {
+    const dStr = o.date || o.orderDate || o.createdAt || '';
+    return dStr.startsWith(todayStr) || dStr === todayStr;
+  };
+
   // Recognized Sales vs Pending Business
   const recognizedOrders = orders.filter((o) => isSalesRecognized(o.orderStatus));
   const pendingOrdersList = orders.filter((o) => isPending(o.orderStatus));
 
-  const todayOrders = recognizedOrders.filter((o) => o.date === todayStr);
-  const todaySales = todayOrders.reduce((acc, o) => acc + o.grandTotal, 0);
+  // Today Calculations (Excluding Delivery Charges as requested)
+  const todayOrders = recognizedOrders.filter(isTodayOrder);
+  const todaySales = todayOrders.reduce((acc, o) => acc + Math.max(0, (o.subtotal || 0) - (o.discount || 0)), 0);
 
-  const todayPendingOrders = pendingOrdersList.filter((o) => o.date === todayStr);
-  const todayPendingRevenue = todayPendingOrders.reduce((acc, o) => acc + o.grandTotal, 0);
+  const todayPendingOrders = pendingOrdersList.filter(isTodayOrder);
+  const todayPendingRevenue = todayPendingOrders.reduce((acc, o) => acc + (o.grandTotal || 0), 0);
 
-  const monthlySales = recognizedOrders.reduce((acc, o) => acc + o.grandTotal, 0);
+  // Monthly Calculations (Excluding Delivery Charges as requested)
+  const monthlySales = recognizedOrders.reduce((acc, o) => acc + Math.max(0, (o.subtotal || 0) - (o.discount || 0)), 0);
 
   // Status Counts
   const pendingCount = pendingOrdersList.length;
@@ -61,20 +68,23 @@ export const DashboardView: React.FC = () => {
   const returnedCount = orders.filter((o) => o.orderStatus === 'Returned').length;
 
   // Expense Calculations
-  const todayExpenses = expenses
-    .filter((e) => e.date === todayStr)
-    .reduce((acc, e) => acc + e.amount, 0);
-
-  const monthlyExpenses = expenses.reduce((acc, e) => acc + e.amount, 0);
+  const isTodayExpense = (e: { date?: string; expenseDate?: string; createdAt?: string }) => {
+    const dStr = e.date || e.expenseDate || e.createdAt || '';
+    return dStr.startsWith(todayStr) || dStr === todayStr;
+  };
+  const todayExpenses = expenses.filter(isTodayExpense).reduce((acc, e) => acc + (e.amount || 0), 0);
+  const monthlyExpenses = expenses.reduce((acc, e) => acc + (e.amount || 0), 0);
 
   // COGS & Profit (Calculated ONLY for Shipped / Delivered / Completed Sales)
   const totalCost = recognizedOrders.reduce((acc, o) => {
-    const itemCost = o.items.reduce((iAcc, item) => iAcc + item.buyingPrice * item.quantity, 0);
+    const itemCost = (o.items || []).reduce((iAcc, item) => iAcc + (item.buyingPrice || 0) * (item.quantity || 1), 0);
     return acc + itemCost;
   }, 0);
 
+  // Gross Profit = Net Product Sales - Product Buying Cost (COGS)
   const grossProfit = monthlySales - totalCost;
-  const netProfit = monthlySales - monthlyExpenses - totalCost;
+  // Net Profit = Gross Profit - Operating Expenses
+  const netProfit = grossProfit - monthlyExpenses;
 
   // Low Stock Items
   const lowStockProducts = products.filter((p) => p.currentStock <= p.minStock);
@@ -82,7 +92,7 @@ export const DashboardView: React.FC = () => {
   // Top Selling Products Calculation (Only from Recognized Sales)
   const productSalesMap: { [key: string]: { name: string; qty: number; total: number; image?: string } } = {};
   recognizedOrders.forEach((o) => {
-    o.items.forEach((item) => {
+    (o.items || []).forEach((item) => {
       if (!productSalesMap[item.productId]) {
         const prod = products.find((p) => p.id === item.productId);
         productSalesMap[item.productId] = {
@@ -92,8 +102,10 @@ export const DashboardView: React.FC = () => {
           image: prod?.image,
         };
       }
-      productSalesMap[item.productId].qty += item.quantity;
-      productSalesMap[item.productId].total += item.totalPrice;
+      const qty = Number(item.quantity) || 1;
+      const total = Number(item.totalPrice) || ((Number(item.unitPrice) || 0) * qty);
+      productSalesMap[item.productId].qty += qty;
+      productSalesMap[item.productId].total += total;
     });
   });
 
@@ -128,73 +140,82 @@ export const DashboardView: React.FC = () => {
             <Plus className="w-4 h-4" /> নতুন অর্ডার নিন
           </button>
           <button
-            onClick={() => setActiveTab('ai-assistant')}
+            onClick={() => setActiveTab('expenses')}
             className="flex-1 md:flex-none px-5 py-3 rounded-2xl bg-slate-800/80 hover:bg-slate-800 text-white font-bold text-xs border border-slate-700 flex items-center justify-center gap-2 transition-all cursor-pointer"
           >
-            <span>AI রিপোর্ট নিন 🤖</span>
+            <Receipt className="w-4 h-4 text-rose-400" />
+            <span>খরচ যুক্ত করুন</span>
           </button>
         </div>
       </div>
 
       {/* Primary 4 Major Financial Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">আজকের বিক্রি</span>
-            <div className="p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400">
-              <DollarSign className="w-5 h-5" />
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">আজকের বিক্রি</span>
+              <div className="p-2.5 rounded-xl bg-teal-50 dark:bg-teal-950/50 text-teal-600 dark:text-teal-400">
+                <DollarSign className="w-5 h-5" />
+              </div>
             </div>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-2">
+              ৳{todaySales.toLocaleString('bn-BD')}
+            </h3>
           </div>
-          <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-2">
-            ৳{todaySales.toLocaleString('bn-BD')}
-          </h3>
-          <p className="text-[11px] text-teal-600 font-medium mt-1 flex items-center gap-1">
+          <p className="text-[11px] text-teal-600 dark:text-teal-400 font-medium mt-2 flex items-center gap-1">
             <ArrowUpRight className="w-3.5 h-3.5" /> {todayOrders.length} টি অর্ডারের মাধ্যমে
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">এই মাসের বিক্রি</span>
-            <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
-              <TrendingUp className="w-5 h-5" />
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">এই মাসের বিক্রি</span>
+              <div className="p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400">
+                <TrendingUp className="w-5 h-5" />
+              </div>
             </div>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-2">
+              ৳{monthlySales.toLocaleString('bn-BD')}
+            </h3>
           </div>
-          <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-2">
-            ৳{monthlySales.toLocaleString('bn-BD')}
-          </h3>
-          <p className="text-[11px] text-emerald-600 font-medium mt-1">
-            মোট অর্ডার: {orders.length} টি
+          <p className="text-[11px] text-emerald-600 dark:text-emerald-400 font-medium mt-2 flex items-center gap-1">
+            <TrendingUp className="w-3.5 h-3.5" /> মোট {recognizedOrders.length} টি নিশ্চিত অর্ডার
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">মাসের মোট খরচ</span>
-            <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
-              <Receipt className="w-5 h-5" />
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">মাসের মোট খরচ</span>
+              <div className="p-2.5 rounded-xl bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400">
+                <Receipt className="w-5 h-5" />
+              </div>
             </div>
+            <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-2">
+              ৳{monthlyExpenses.toLocaleString('bn-BD')}
+            </h3>
           </div>
-          <h3 className="text-2xl font-black text-slate-900 dark:text-white mt-2">
-            ৳{monthlyExpenses.toLocaleString('bn-BD')}
-          </h3>
-          <p className="text-[11px] text-rose-500 font-medium mt-1">
+          <p className="text-[11px] text-rose-500 dark:text-rose-400 font-medium mt-2 flex items-center gap-1">
             আজকের খরচ: ৳{todayExpenses.toLocaleString('bn-BD')}
           </p>
         </div>
 
-        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">আনুমানিক নিট লাভ</span>
-            <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400">
-              <DollarSign className="w-5 h-5" />
+        <div className="bg-white dark:bg-slate-900 rounded-2xl p-5 border border-slate-200 dark:border-slate-800 shadow-xs hover:shadow-md transition-shadow flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">প্রকৃত নিট মুনাফা</span>
+              <div className="p-2.5 rounded-xl bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400">
+                <DollarSign className="w-5 h-5" />
+              </div>
             </div>
+            <h3 className={`text-2xl font-black mt-2 ${netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'}`}>
+              ৳{netProfit.toLocaleString('bn-BD')}
+            </h3>
           </div>
-          <h3 className={`text-2xl font-black mt-2 ${netProfit >= 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600'}`}>
-            ৳{netProfit.toLocaleString('bn-BD')}
-          </h3>
-          <p className="text-[11px] text-slate-400 font-medium mt-1">
-            (বিক্রি - পণ্য খরচ - পরিচালনা খরচ)
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium mt-2 flex items-center gap-1">
+            গ্রস লাভ: ৳{grossProfit.toLocaleString('bn-BD')}
           </p>
         </div>
       </div>

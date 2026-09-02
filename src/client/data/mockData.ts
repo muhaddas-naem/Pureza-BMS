@@ -14,9 +14,9 @@ import {
 export const initialUser: User = {
   id: 'usr-1',
   name: 'নাঈম ইসলাম (Main Admin)',
-  email: 'admin@pureza.com',
+  email: 'naem@pureza.com.bd',
   phone: '01818585331',
-  password: 'naem@pureza',
+  password: 'naem@pureza100M$',
   role: 'Admin',
   status: 'Active',
   permissions: [
@@ -91,7 +91,7 @@ export const bdDistricts = [
   'শেরপুর', 'জামালপুর', 'নেত্রকোণা', 'নাটোর', 'নওগাঁ', 'চাঁপাইনবাবগঞ্জ', 'জয়পুরহাট',
   'সিরাজগঞ্জ', 'কুড়িগ্রাম', 'লালমনিরহাট', 'নীলফামারী', 'পঞ্চগড়', 'ঠাকুরগাঁও', 'খাগড়াছড়ি',
   'রাঙ্গামাটি', 'বান্দরবান', 'চাঁদপুর', 'লক্ষ্মীপুর', 'ভোলা', 'পটুয়াখালী', 'পিরোজপুর',
-  'হবিগঞ্জ', 'মৌলভীবাজার', 'সুনামগঞ্জ', 'বরগুনা', 'কুষ্টিয়া'
+  'হবিগঞ্জ', 'মৌলভীবাজার', 'সুনামগঞ্জ', 'বরগুনা', 'গাইবান্ধা'
 ];
 
 export const initialCategories: Category[] = [
@@ -107,6 +107,7 @@ export const initialProducts: Product[] = [
     categoryId: 'cat-1',
     categoryName: 'স্কিনকেয়ার',
     name: 'Pureza Glow Rose Water Serum 50ml',
+    slug: 'rose serum glow water',
     sku: 'PUR-SK-001',
     barcode: '894000123401',
     buyingPrice: 380,
@@ -123,6 +124,7 @@ export const initialProducts: Product[] = [
     categoryId: 'cat-1',
     categoryName: 'স্কিনকেয়ার',
     name: 'Pureza Organic Neem Face Wash 100ml',
+    slug: 'neem face wash organic',
     sku: 'PUR-SK-002',
     barcode: '894000123402',
     buyingPrice: 180,
@@ -139,6 +141,7 @@ export const initialProducts: Product[] = [
     categoryId: 'cat-2',
     categoryName: 'হেয়ার কেয়ার',
     name: 'Pureza Herbal Onion Hair Oil 200ml',
+    slug: 'onion hair oil herbal',
     sku: 'PUR-HC-001',
     barcode: '894000123403',
     buyingPrice: 290,
@@ -155,6 +158,7 @@ export const initialProducts: Product[] = [
     categoryId: 'cat-2',
     categoryName: 'হেয়ার কেয়ার',
     name: 'Pureza Aloe Anti-Dandruff Shampoo 250ml',
+    slug: 'aloe shampoo anti dandruff',
     sku: 'PUR-HC-002',
     barcode: '894000123404',
     buyingPrice: 220,
@@ -171,6 +175,7 @@ export const initialProducts: Product[] = [
     categoryId: 'cat-3',
     categoryName: 'পার্সোনাল কেয়ার',
     name: 'Pureza Saffron Ubtan Body Scrub 150g',
+    slug: 'saffron ubtan body scrub',
     sku: 'PUR-PC-001',
     barcode: '894000123405',
     buyingPrice: 250,
@@ -187,6 +192,7 @@ export const initialProducts: Product[] = [
     categoryId: 'cat-1',
     categoryName: 'স্কিনকেয়ার',
     name: 'Pureza Vitamin C Brightening Cream 50g',
+    slug: 'vitamin c cream brightening',
     sku: 'PUR-SK-003',
     barcode: '894000123406',
     buyingPrice: 310,
@@ -614,7 +620,8 @@ export const initialSettings: SystemSettings = {
   deliveryChargeInsideDhaka: 80,
   deliveryChargeOutsideDhaka: 150,
   paymentMethods: ['bKash', 'Nagad', 'Rocket', 'Bank', 'Cash on Delivery'],
-  couriers: ['Pathao', 'Steadfast', 'RedX', 'Paperfly', 'Sundarban', 'Other'],
+  couriers: ['Steadfast', 'Sundarban', 'Pathao', 'RedX', 'Paperfly', 'Other'],
+  defaultCourier: 'Steadfast',
   darkMode: false,
 };
 
